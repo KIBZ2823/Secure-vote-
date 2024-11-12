@@ -1,0 +1,214 @@
+//Database
+<?php
+$servername = "localhost";
+$username = "root";
+$password = ""; 
+$dbname = "sec_vote"; 
+
+// Create connection
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+?>
+//Log in part
+
+
+<?php
+session_start();
+include 'db.php';
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+    $username = $_POST['username'];
+    $password = $_POST['password'];
+
+    $stmt = $conn->prepare("SELECT user_id, password_hash FROM users WHERE username = ?");
+    $stmt->bind_param('s', $username);
+    $stmt->execute();
+    $stmt->store_result();
+    
+    if ($stmt->num_rows > 0) {
+        $stmt->bind_result($user_id, $password_hash);
+        $stmt->fetch();
+        
+        if (password_verify($password, $password_hash)) {
+            $_SESSION['user_id'] = $user_id;
+            header('Location: verification.php');
+            exit();
+        } else {
+            echo "Invalid credentials.";
+        }
+    } else {
+        echo "Invalid credentials.";
+    }
+
+    $stmt->close();
+}
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Login</title>
+</head>
+<body>
+    <form action="login.php" method="POST">
+        <label for="username">Username:</label>
+        <input type="text" id="username" name="username" required>
+        <br>
+        <label for="password">Password:</label>
+        <input type="password" id="password" name="password" required>
+        <br>
+        <button type="submit">Login</button>
+    </form>
+</body>
+</html>
+
+
+
+//Verification part
+
+<?php
+// Database connection
+$servername = "localhost";
+$username = "username";
+$password = "password";
+$dbname = "voting_system";
+
+$conn = new mysqli($servername, $username, $password, $dbname);
+
+// Check connection
+if ($conn->connect_error) {
+    die("Connection failed: " . $conn->connect_error);
+}
+
+// Function to verify user
+function verifyUser ($userId, $fingerprintData, $faceIdData) {
+    global $conn;
+
+    // Fetch stored biometric data
+    $sql = "SELECT fingerprint, face_id FROM users WHERE user_id = ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param("s", $userId);
+    $stmt->execute();
+    $stmt->store_result();
+    $stmt->bind_result($storedFingerprint, $storedFaceId);
+    $stmt->fetch();
+
+    // Verify fingerprint
+    $isFingerprintValid = ($storedFingerprint === $fingerprintData);
+
+    // Verify Face ID
+    $isFaceIdValid = ($storedFaceId === $faceIdData);
+
+    // Return verification result
+    return $isFingerprintValid && $isFaceIdValid;
+}
+
+// Example usage
+$userId = $_POST['user_id'];
+$fingerprintData = $_POST['fingerprint_data'];
+$faceIdData = $_POST['face_id_data'];
+
+if (verifyUser ($userId, $fingerprintData, $faceIdData)) {
+    echo "User  verified successfully. You can proceed to vote.";
+} else {
+    echo "Verification failed. Please try again.";
+}
+
+$conn->close();
+?>
+//voting Dashboard
+<?php
+session_start();
+include 'db.php';
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit();
+ }
+
+$user_id = $_SESSION['user_id'];
+$options = $conn->query("SELECT * FROM options");
+
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voting Dashboard</title>
+</head>
+<body>
+    <h1>Welcome to the Voting Dashboard</h1>
+    <form action="cast_vote.php" method="POST">
+        <h2>Select an option to vote:</h2>
+        <?php while ($row = $options->fetch_assoc()): ?>
+            <input type="radio" name="option_id" value="<?php echo $row['option_id']; ?>" required>
+            <?php echo $row['option_name']; ?><br>
+        <?php endwhile; ?>
+        <button type="submit">Cast Vote</button>
+    </form>
+    <a href="Castvote.php">cast vote</a>
+</body>
+</html>
+
+
+//Cast vote
+<?php
+session_start();
+include 'db.php';
+
+if (!isset($_SESSION['user_id'])) {
+    header('Location: login.php');
+    exit();
+}
+
+$user_id = $_SESSION['user_id'];
+$option_id = $_POST['option_id'];
+
+$stmt = $conn->prepare("INSERT INTO votes (user_id, option_id) VALUES (?, ?)");
+$stmt->bind_param('ii', $user_id, $option_id);
+
+if ($stmt->execute()) {
+    echo "Vote cast successfully!";
+} else {
+    echo "Error: " . $stmt->error;
+}
+
+$stmt->close();
+?>
+
+<a href="dashboard.php">Back to Dashboard</a>
+
+//Displaying results
+<?php
+include 'db.php';
+
+$options = $conn->query("SELECT o.option_name, COUNT(v.vote_id) AS vote_count FROM options o LEFT JOIN votes v ON o.option_id = v.option_id GROUP BY o.option_id");
+
+?>
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Voting Results</title>
+</head>
+<body>
+    <h1>Voting Results</h1>
+    <table border="1">
+        <tr>
+            <th>Option</th>
+            <th>Votes</th>
+        </tr>
+        <?php while ($row = $options->fetch_assoc()): ?>
+            <tr>
+                <td><?php echo $row['option_name']; ?></td>
+                <td><?php echo $row['vote_count']; ?></td>
+            </tr>
+        <?php endwhile; ?>
+    </table>
+    <a href="dashboard.php">Back to Dashboard</a>
+</body>
+</html>
